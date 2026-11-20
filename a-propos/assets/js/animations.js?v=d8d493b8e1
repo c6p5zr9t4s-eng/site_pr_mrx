@@ -1,0 +1,88 @@
+// Animations du site. Sans ce script, tout reste visible et le menu fonctionne.
+// Apparition en douceur des blocs quand ils entrent dans l'écran, en cascade quand plusieurs arrivent ensemble.
+// Seuls les blocs situés sous l'écran au chargement sont masqués : rien ne clignote, et sans ce script tout est visible.
+(function () {
+  var CIBLES =
+    ".section__tete, .atout, .carte, .prestation, .chiffre, .encadre, .aplat__photo, .aplat .pile, " +
+    ".appel__contenu, .carrousel-cadre, .plan, .photo-large, .carte-zone";
+  var DECALAGE = 90; // millisecondes entre deux blocs d'une même cascade
+  var DUREE_MAX = 1600;
+
+  // Volet du menu resté ouvert quand l'écran s'élargit (téléphone tourné) : il se referme, le menu repasse en ligne
+  var menu = document.getElementById("menu-principal");
+  if (menu && menu.hidePopover) {
+    window.matchMedia("(min-width: 40.0625rem)").addEventListener("change", function (evenement) {
+      if (evenement.matches && menu.matches(":popover-open")) {
+        menu.hidePopover();
+      }
+    });
+  }
+
+  // En-tête : il se resserre dès que la page a défilé, et reprend sa taille en revenant tout en haut.
+  // Deux seuils distincts, pour qu'il n'hésite pas entre les deux états.
+  var entete = document.querySelector(".entete");
+  if (entete) {
+    var REDUIRE_A = 90; // pixels défilés
+    var AGRANDIR_A = 20;
+    var reduit = false;
+    var ajuster = function () {
+      var y = window.scrollY;
+      if (!reduit && y > REDUIRE_A) {
+        reduit = true;
+        entete.classList.add("entete--reduit");
+      } else if (reduit && y < AGRANDIR_A) {
+        reduit = false;
+        entete.classList.remove("entete--reduit");
+      }
+    };
+    window.addEventListener("scroll", ajuster, { passive: true });
+    ajuster();
+  }
+
+  if (!("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+
+  function terminer(bloc) {
+    bloc.classList.remove("apparait", "apparait--vu");
+    bloc.style.transitionDelay = "";
+    if (!bloc.getAttribute("style")) {
+      bloc.removeAttribute("style");
+    }
+  }
+
+  var observateur = new IntersectionObserver(
+    function (entrees) {
+      var rang = 0;
+      entrees.forEach(function (entree) {
+        if (!entree.isIntersecting) {
+          return;
+        }
+        var bloc = entree.target;
+        observateur.unobserve(bloc);
+        bloc.style.transitionDelay = rang * DECALAGE + "ms";
+        rang++;
+        bloc.classList.add("apparait--vu");
+        // Une fois le bloc en place, il retrouve ses transitions habituelles (survol)
+        bloc.addEventListener("transitionend", function fin(evenement) {
+          if (evenement.target === bloc && evenement.propertyName === "opacity") {
+            bloc.removeEventListener("transitionend", fin);
+            terminer(bloc);
+          }
+        });
+        setTimeout(function () {
+          terminer(bloc);
+        }, DUREE_MAX + rang * DECALAGE);
+      });
+    },
+    { rootMargin: "0px 0px -6% 0px", threshold: 0.08 }
+  );
+
+  var hauteur = window.innerHeight;
+  document.querySelectorAll(CIBLES).forEach(function (bloc) {
+    if (bloc.getBoundingClientRect().top > hauteur) {
+      bloc.classList.add("apparait");
+      observateur.observe(bloc);
+    }
+  });
+})();
