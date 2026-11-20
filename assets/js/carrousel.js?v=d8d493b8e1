@@ -1,0 +1,134 @@
+// Carrousel des pages de service : flèches précédent / suivant avec un défilement doux et régulier,
+// et agrandissement d'une photo au clic.
+// Sans ce script, le carrousel défile au doigt, à la molette ou au clavier, et le clic ouvre la photo seule.
+(function () {
+  var DUREE = 650; // millisecondes
+  var sansAnimation = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function adoucir(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function installer(cadre) {
+    var piste = cadre.querySelector(".carrousel");
+    var vues = piste ? piste.children : [];
+    if (vues.length < 2) {
+      return;
+    }
+    var enCours = 0;
+
+    function positionDe(vue) {
+      var cible = vue.offsetLeft - (piste.clientWidth - vue.offsetWidth) / 2;
+      return Math.max(0, Math.min(cible, piste.scrollWidth - piste.clientWidth));
+    }
+
+    function indexCourant() {
+      var centre = piste.scrollLeft + piste.clientWidth / 2;
+      var meilleur = 0;
+      var ecart = Infinity;
+      for (var i = 0; i < vues.length; i++) {
+        var e = Math.abs(vues[i].offsetLeft + vues[i].offsetWidth / 2 - centre);
+        if (e < ecart) {
+          ecart = e;
+          meilleur = i;
+        }
+      }
+      return meilleur;
+    }
+
+    function allerA(index) {
+      var depart = piste.scrollLeft;
+      var arrivee = positionDe(vues[Math.max(0, Math.min(index, vues.length - 1))]);
+      if (sansAnimation) {
+        piste.scrollLeft = arrivee;
+        return;
+      }
+      var debut = null;
+      var tour = ++enCours;
+      // L'aimantation est suspendue pendant le mouvement, sinon elle le saccade
+      piste.classList.add("carrousel--en-mouvement");
+      function image(instant) {
+        if (tour !== enCours) {
+          return;
+        }
+        if (debut === null) {
+          debut = instant;
+        }
+        var t = Math.min((instant - debut) / DUREE, 1);
+        piste.scrollLeft = depart + (arrivee - depart) * adoucir(t);
+        if (t < 1) {
+          requestAnimationFrame(image);
+        } else {
+          piste.classList.remove("carrousel--en-mouvement");
+        }
+      }
+      requestAnimationFrame(image);
+    }
+
+    function creer(sens, libelle) {
+      var bouton = document.createElement("button");
+      bouton.type = "button";
+      bouton.className = "fleche carrousel__fleche carrousel__fleche--" + (sens < 0 ? "gauche" : "droite");
+      bouton.setAttribute("aria-label", libelle);
+      bouton.addEventListener("click", function () {
+        allerA(indexCourant() + sens);
+      });
+      cadre.appendChild(bouton);
+      return bouton;
+    }
+
+    var precedent = creer(-1, "Photo précédente");
+    var suivant = creer(1, "Photo suivante");
+
+    function actualiser() {
+      precedent.disabled = piste.scrollLeft <= 2;
+      suivant.disabled = piste.scrollLeft >= piste.scrollWidth - piste.clientWidth - 2;
+    }
+    piste.addEventListener("scroll", actualiser, { passive: true });
+    window.addEventListener("resize", actualiser);
+    actualiser();
+
+    cadre.classList.add("carrousel-cadre--script");
+  }
+
+  document.querySelectorAll(".carrousel-cadre").forEach(installer);
+
+  // Agrandissement : la photo s'ouvre dans une fenêtre par-dessus la page (Échap, croix ou clic à côté pour fermer)
+  var liens = document.querySelectorAll("[data-agrandir]");
+  if (liens.length && typeof HTMLDialogElement === "function") {
+    var visionneuse = document.createElement("dialog");
+    visionneuse.className = "visionneuse";
+    visionneuse.setAttribute("aria-label", "Photo agrandie");
+
+    var fermer = document.createElement("button");
+    fermer.type = "button";
+    fermer.className = "fleche visionneuse__fermer";
+    fermer.setAttribute("aria-label", "Fermer");
+
+    var grande = document.createElement("img");
+    var legende = document.createElement("p");
+    visionneuse.append(fermer, grande, legende);
+    document.body.appendChild(visionneuse);
+
+    fermer.addEventListener("click", function () {
+      visionneuse.close();
+    });
+    visionneuse.addEventListener("click", function (evenement) {
+      if (evenement.target === visionneuse) {
+        visionneuse.close();
+      }
+    });
+
+    liens.forEach(function (lien) {
+      lien.addEventListener("click", function (evenement) {
+        evenement.preventDefault();
+        var petite = lien.querySelector("img");
+        var texte = lien.closest("figure").querySelector("figcaption");
+        grande.src = lien.getAttribute("href");
+        grande.alt = petite ? petite.alt : "";
+        legende.textContent = texte ? texte.textContent : "";
+        visionneuse.showModal();
+      });
+    });
+  }
+})();
